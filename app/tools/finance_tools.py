@@ -1,6 +1,19 @@
-async def get_exchange_balance():
+from langchain_core.tools import tool
+
+
+@tool
+async def get_exchange_balance() -> float:
+    """
+    Returns exchange wallet balance.
+    """
+
     return 10000
 
 
-async def get_blockchain_balance():
+@tool
+async def get_blockchain_balance() -> float:
+    """
+    Returns blockchain wallet balance.
+    """
+
     return 9700

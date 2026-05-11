@@ -1,8 +1,11 @@
 from typing import TypedDict
 
-class WorkflowState(TypedDict):
+
+class WorkflowState(TypedDict, total=False):
+
     exchange_balance: float
     blockchain_balance: float
     difference: float
     risk_level: str
     requires_approval: bool
+    llm_response: str
