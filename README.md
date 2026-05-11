@@ -1,14 +1,15 @@
 # AI Finance Agent
 
-An AI-powered financial reconciliation agent built with LangGraph, FastAPI, and the Anthropic Claude API. The agent receives financial balances from multiple sources, detects discrepancies, classifies risk, and determines whether human approval is required.
+An AI-powered financial reconciliation agent built with LangGraph, FastAPI, and the Anthropic Claude API. The agent uses Claude's tool calling to fetch financial balances from multiple sources, detects discrepancies, classifies risk, and determines whether human approval is required.
 
 ## What it does
 
-1. Receives exchange and blockchain balances
-2. Computes the discrepancy between sources
-3. Classifies risk level (`low` / `medium` / `high`)
-4. Decides whether human approval is needed
-5. Returns a structured JSON result
+1. Invokes Claude 3.5 Sonnet with bound finance tools
+2. Claude calls `get_exchange_balance` and `get_blockchain_balance` via tool use
+3. Computes the discrepancy between sources
+4. Classifies risk level (`low` / `medium` / `high`)
+5. Decides whether human approval is needed
+6. Returns a structured JSON result
 
 ## Stack
 
@@ -16,7 +17,8 @@ An AI-powered financial reconciliation agent built with LangGraph, FastAPI, and 
 | --- | --- |
 | API | FastAPI + Uvicorn |
 | Workflow | LangGraph |
-| AI Model | Anthropic Claude (via LangChain) |
+| AI Model | Anthropic Claude 3.5 Sonnet (`claude-3-5-sonnet-latest`) |
+| LLM Framework | LangChain + langchain-anthropic |
 | Validation | Pydantic |
 | Config | python-dotenv |
 | HTTP client | httpx |
@@ -32,12 +34,12 @@ ai-finance-agent/
 │   ├── schemas/
 │   │   └── reconciliation.py           # Pydantic output schema
 │   ├── services/
-│   │   └── claude_service.py           # Anthropic Claude client setup
+│   │   └── claude_service.py           # Claude client + tool binding
 │   ├── tools/
-│   │   └── finance_tools.py            # Balance data fetchers (exchange, blockchain)
+│   │   └── finance_tools.py            # LangChain tools (exchange, blockchain)
 │   ├── workflows/
 │   │   ├── state.py                    # LangGraph WorkflowState TypedDict
-│   │   ├── nodes.py                    # reconcile_node logic
+│   │   ├── nodes.py                    # reconciliation_agent node logic
 │   │   └── graph.py                    # LangGraph StateGraph definition
 │   └── main.py                         # FastAPI app + /reconcile endpoint
 ├── requirements.txt
@@ -47,29 +49,40 @@ ai-finance-agent/
 
 ## How the workflow runs
 
-**Input**
-```json
-{
-    "exchange_balance": 10000,
-    "blockchain_balance": 9700
-}
-```
-
 **LangGraph flow**
 
 ```
-[start] --> reconcile_node --> [end]
+[start] --> reconciliation_agent --> [end]
 ```
 
-The `reconcile_node`:
-- Computes `difference = |exchange_balance - blockchain_balance|`
-- Sets `risk_level`: `low` (<= 100) -> `medium` (> 100) -> `high` (> 1000)
-- Sets `requires_approval = difference > 100`
+**Inside `reconciliation_agent`:**
+
+1. Prompts Claude to retrieve balances using available tools
+2. Claude responds with tool calls (`get_exchange_balance`, `get_blockchain_balance`)
+3. Each tool is invoked and returns the balance value
+4. Risk logic is applied to the results:
+   - `difference = |exchange_balance - blockchain_balance|`
+   - `risk_level`: `low` (<= 100) / `medium` (> 100) / `high` (> 1000)
+   - `requires_approval = difference > 100`
+
+**Workflow state (`WorkflowState`)**
+
+```python
+class WorkflowState(TypedDict, total=False):
+    exchange_balance: float
+    blockchain_balance: float
+    difference: float
+    risk_level: str
+    requires_approval: bool
+    llm_response: str
+```
 
 **Output**
 ```json
 {
-    "difference": 300,
+    "exchange_balance": 10000,
+    "blockchain_balance": 9700,
+    "difference": 300.0,
     "risk_level": "medium",
     "requires_approval": true
 }
@@ -131,12 +144,14 @@ The API will be available at `http://localhost:8000`.
 
 ### `POST /reconcile`
 
-Triggers a reconciliation run with the configured balances.
+Triggers a reconciliation run. The agent fetches balances automatically via tool calling — no request body required.
 
 **Response**
 
 ```json
 {
+    "exchange_balance": 10000,
+    "blockchain_balance": 9700,
     "difference": 300.0,
     "risk_level": "medium",
     "requires_approval": true
