@@ -17,7 +17,7 @@ An AI-powered financial reconciliation agent built with LangGraph, FastAPI, and 
 | --- | --- |
 | API | FastAPI + Uvicorn |
 | Workflow | LangGraph |
-| AI Model | Anthropic Claude 3.5 Sonnet (`claude-3-5-sonnet-latest`) |
+| AI Model | Anthropic Claude 4.5 Haiku (`claude-haiku-4-5`) |
 | LLM Framework | LangChain + langchain-anthropic |
 | Validation | Pydantic |
 | Config | python-dotenv |

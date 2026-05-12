@@ -7,7 +7,7 @@ from app.tools.finance_tools import (
 )
 
 llm = ChatAnthropic(
-    model="claude-3-5-sonnet-latest",
+    model="claude-haiku-4-5",
     anthropic_api_key=ANTHROPIC_API_KEY,
     temperature=0
 )
