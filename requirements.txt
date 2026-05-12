@@ -8,3 +8,4 @@ pydantic
 python-dotenv
 httpx
 langchain-core
+mcp
