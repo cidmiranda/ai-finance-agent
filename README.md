@@ -159,3 +159,15 @@ Triggers a reconciliation run. The agent fetches balances automatically via tool
 ```
 
 Interactive docs are available at `http://localhost:8000/docs`.
+
+
+Claude Tool Calling real
+MCP Server real
+LangGraph conditional routing
+Human-in-the-loop
+Approval workflows
+Kafka integration
+OpenTelemetry
+Temporal Saga workflows
+Multi-agent architecture
+SOX-friendly audit logging

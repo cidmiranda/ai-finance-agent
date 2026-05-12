@@ -1,62 +1,117 @@
+import json
+
 from app.workflows.state import WorkflowState
-from app.services.claude_service import (
-    llm_with_tools,
-    tools
+
+from app.services.claude_service import llm
+
+from app.mcp_client.client import (
+    get_mcp_tools,
 )
 
 
-async def reconciliation_agent(state: WorkflowState):
+def extract_mcp_result(result):
 
-    prompt = """
-    Retrieve balances using available tools
-    and reconcile them.
-    """
+    # MCP content blocks
+    if isinstance(result, list):
 
-    response = await llm_with_tools.ainvoke(prompt)
+        text = result[0]["text"]
 
-    tool_results = {}
+        # JSON payload
+        try:
+            return json.loads(text)
 
-    if response.tool_calls:
+        except Exception:
+            return text
 
-        for tool_call in response.tool_calls:
+    return result
 
-            tool_name = tool_call["name"]
 
-            selected_tool = next(
-                t for t in tools
-                if t.name == tool_name
-            )
+def extract_balance(result) -> float:
 
-            result = await selected_tool.ainvoke(
-                tool_call["args"]
-            )
+    parsed = extract_mcp_result(result)
 
-            tool_results[tool_name] = result
+    if isinstance(parsed, dict):
+        return float(parsed["balance"])
 
-    exchange_balance = tool_results[
+    return float(parsed)
+
+
+async def reconciliation_agent(
+    state: WorkflowState
+):
+
+    tools = await get_mcp_tools()
+
+    tool_map = {
+        tool.name: tool
+        for tool in tools
+    }
+
+    # deterministic orchestration
+
+    exchange_balance_response = await tool_map[
         "get_exchange_balance"
-    ]
+    ].ainvoke({})
 
-    blockchain_balance = tool_results[
+    blockchain_balance_response = await tool_map[
         "get_blockchain_balance"
-    ]
+    ].ainvoke({})
 
-    difference = abs(
-        exchange_balance - blockchain_balance
+    exchange_balance = extract_balance(
+        exchange_balance_response
     )
 
-    risk_level = "low"
+    blockchain_balance = extract_balance(
+        blockchain_balance_response
+    )
 
-    if difference > 100:
-        risk_level = "medium"
+    reconciliation_response = await tool_map[
+        "reconcile_balances"
+    ].ainvoke({
+        "exchange_balance": exchange_balance,
+        "blockchain_balance": blockchain_balance
+    })
 
-    if difference > 1000:
-        risk_level = "high"
+    # FIX HERE
+
+    reconciliation = extract_mcp_result(
+        reconciliation_response
+    )
+
+    prompt = f"""
+    Analyze this financial reconciliation.
+
+    Exchange balance:
+    {exchange_balance}
+
+    Blockchain balance:
+    {blockchain_balance}
+
+    Difference:
+    {reconciliation['difference']}
+
+    Risk level:
+    {reconciliation['risk_level']}
+
+    Explain:
+    - operational risk
+    - whether approval is recommended
+    - possible causes
+    """
+
+    analysis = await llm.ainvoke(prompt)
 
     return {
         "exchange_balance": exchange_balance,
         "blockchain_balance": blockchain_balance,
-        "difference": difference,
-        "risk_level": risk_level,
-        "requires_approval": difference > 100
+        "difference": reconciliation[
+            "difference"
+        ],
+        "risk_level": reconciliation[
+            "risk_level"
+        ],
+        "requires_approval": reconciliation[
+            "requires_approval"
+        ],
+        "analysis": analysis.content
     }

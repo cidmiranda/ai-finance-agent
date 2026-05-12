@@ -9,3 +9,4 @@ python-dotenv
 httpx
 langchain-core
 mcp
+langchain-mcp-adapters
