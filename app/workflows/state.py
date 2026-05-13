@@ -8,4 +8,5 @@ class WorkflowState(TypedDict, total=False):
     difference: float
     risk_level: str
     requires_approval: bool
-    llm_response: str
+    analysis: str
+    approved: bool
