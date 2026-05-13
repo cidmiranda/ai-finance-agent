@@ -115,3 +115,30 @@ async def reconciliation_agent(
         ],
         "analysis": analysis.content
     }
+
+async def human_approval_node(
+    state: WorkflowState
+):
+
+    print(
+        "HIGH RISK: human approval required"
+    )
+
+    # mock approval
+
+    return {
+        "approved": True
+    }
+
+
+async def auto_approve_node(
+    state: WorkflowState
+):
+
+    print(
+        "LOW RISK: auto approved"
+    )
+
+    return {
+        "approved": True
+    }
