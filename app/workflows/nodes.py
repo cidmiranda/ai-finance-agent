@@ -121,13 +121,13 @@ async def human_approval_node(
 ):
 
     print(
-        "HIGH RISK: human approval required"
+        "HIGH RISK: awaiting human approval"
     )
 
     # mock approval
 
     return {
-        "approved": True
+        "approved": False
     }
 
 
