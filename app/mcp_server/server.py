@@ -3,7 +3,12 @@ import logging
 
 from app.schemas.reconciliation import ReconciliationResult
 
-logging.basicConfig(level=logging.INFO)
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    stream=sys.stderr
+)
 
 mcp = FastMCP("Finance MCP Server")
 
@@ -55,4 +60,4 @@ async def reconcile_balances(
     }
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="stdio")

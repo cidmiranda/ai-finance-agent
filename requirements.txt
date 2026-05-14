@@ -10,3 +10,5 @@ httpx
 langchain-core
 mcp
 langchain-mcp-adapters
+langgraph-checkpoint-sqlite
+aiosqlite

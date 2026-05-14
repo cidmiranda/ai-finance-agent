@@ -4,7 +4,7 @@ from app.workflows.state import (
 
 
 def route_after_reconciliation(
-    state: WorkflowState
+    state: WorkflowState,
 ):
 
     if state["requires_approval"]:

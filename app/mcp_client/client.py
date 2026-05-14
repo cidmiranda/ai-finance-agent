@@ -1,9 +1,10 @@
 from langchain_mcp_adapters.client import MultiServerMCPClient
+import sys
 
 client = MultiServerMCPClient(
     {
         "finance": {
-            "command": "python",
+            "command": sys.executable,
             "args": [
                 "-m",
                 "app.mcp_server.server"

@@ -1,8 +1,18 @@
 import json
 
-from app.workflows.state import WorkflowState
+from app.workflows.state import (
+    WorkflowState,
+)
 
 from app.services.claude_service import llm
+
+from app.services.telegram_service import (
+    send_approval_message,
+)
+
+from app.services.approval_service import (
+    update_workflow,
+)
 
 from app.mcp_client.client import (
     get_mcp_tools,
@@ -11,12 +21,10 @@ from app.mcp_client.client import (
 
 def extract_mcp_result(result):
 
-    # MCP content blocks
     if isinstance(result, list):
 
         text = result[0]["text"]
 
-        # JSON payload
         try:
             return json.loads(text)
 
@@ -37,8 +45,10 @@ def extract_balance(result) -> float:
 
 
 async def reconciliation_agent(
-    state: WorkflowState
+    state: WorkflowState,
 ):
+
+    print("RECONCILIATION STATE:", state)
 
     tools = await get_mcp_tools()
 
@@ -46,8 +56,6 @@ async def reconciliation_agent(
         tool.name: tool
         for tool in tools
     }
-
-    # deterministic orchestration
 
     exchange_balance_response = await tool_map[
         "get_exchange_balance"
@@ -69,10 +77,8 @@ async def reconciliation_agent(
         "reconcile_balances"
     ].ainvoke({
         "exchange_balance": exchange_balance,
-        "blockchain_balance": blockchain_balance
+        "blockchain_balance": blockchain_balance,
     })
-
-    # FIX HERE
 
     reconciliation = extract_mcp_result(
         reconciliation_response
@@ -92,16 +98,13 @@ async def reconciliation_agent(
 
     Risk level:
     {reconciliation['risk_level']}
-
-    Explain:
-    - operational risk
-    - whether approval is recommended
-    - possible causes
     """
 
     analysis = await llm.ainvoke(prompt)
 
     return {
+        **state,
+        "workflow_id": state.get("workflow_id"),
         "exchange_balance": exchange_balance,
         "blockchain_balance": blockchain_balance,
         "difference": reconciliation[
@@ -113,32 +116,91 @@ async def reconciliation_agent(
         "requires_approval": reconciliation[
             "requires_approval"
         ],
-        "analysis": analysis.content
+        "analysis": analysis.content,
     }
 
+
 async def human_approval_node(
-    state: WorkflowState
+    state: WorkflowState,
 ):
 
-    print(
-        "HIGH RISK: awaiting human approval"
+    print("HUMAN APPROVAL STATE:", state)
+
+    await send_approval_message(
+        workflow_id=state.get("workflow_id"),
+        difference=state.get("difference"),
+        risk_level=state.get("risk_level"),
     )
 
-    # mock approval
+    update_workflow(
+        state.get("workflow_id"),
+        {
+            **state,
+            "status": "WAITING_APPROVAL",
+            "approved": False,
+        },
+    )
 
     return {
-        "approved": False
+        **state,
+        "status": "WAITING_APPROVAL",
+        "approved": False,
+    }
+
+async def finalize_approval_node(
+    state: WorkflowState,
+):
+
+    print("FINALIZE APPROVAL STATE:", state)
+
+    if state.get("approved"):
+
+        update_workflow(
+            state.get("workflow_id"),
+            {
+                "approved": True,
+                "status": "APPROVED",
+            },
+        )
+
+        return {
+            **state,
+            "workflow_id": state.get("workflow_id"),
+            "status": "APPROVED",
+        }
+
+    update_workflow(
+        state.get("workflow_id"),
+        {
+            "approved": False,
+            "status": "REJECTED",
+        },
+    )
+
+    return {
+        **state,
+        "workflow_id": state.get("workflow_id"),
+        "status": "REJECTED",
     }
 
 
 async def auto_approve_node(
-    state: WorkflowState
+    state: WorkflowState,
 ):
 
-    print(
-        "LOW RISK: auto approved"
+    print("AUTO APPROVE STATE:", state)
+
+    update_workflow(
+        state.get("workflow_id"),
+        {
+            "approved": True,
+            "status": "AUTO_APPROVED",
+        },
     )
 
     return {
-        "approved": True
+        **state,
+        "workflow_id": state.get("workflow_id"),
+        "approved": True,
+        "status": "AUTO_APPROVED",
     }
