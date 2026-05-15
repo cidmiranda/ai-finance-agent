@@ -2,6 +2,7 @@ import json
 import logging
 
 from aiokafka import AIOKafkaProducer
+from opentelemetry import trace
 
 from app.config.settings import KAFKA_BOOTSTRAP_SERVERS
 
@@ -31,5 +32,12 @@ async def publish(topic: str, payload: dict):
     if _producer is None:
         logger.warning("Kafka producer not started, skipping publish to %s", topic)
         return
-    await _producer.send_and_wait(topic, payload)
+
+    tracer = trace.get_tracer("ai-finance-agent")
+    with tracer.start_as_current_span(f"kafka.publish") as span:
+        span.set_attribute("messaging.system", "kafka")
+        span.set_attribute("messaging.destination", topic)
+        span.set_attribute("messaging.destination_kind", "topic")
+        await _producer.send_and_wait(topic, payload)
+
     logger.info("Published to %s: %s", topic, payload)

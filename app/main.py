@@ -23,6 +23,7 @@ from app.mcp_server.server import mcp
 from app.kafka import producer as kafka_producer
 from app.kafka import consumer as kafka_consumer
 from app.kafka.topics import RECONCILIATION_REQUESTED
+from app.telemetry.tracer import setup_telemetry
 
 mcp_asgi = mcp.streamable_http_app()
 
@@ -61,6 +62,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+setup_telemetry(app)
 
 app.include_router(
     approvals_router,

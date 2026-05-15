@@ -13,3 +13,7 @@ langchain-mcp-adapters
 langgraph-checkpoint-sqlite
 aiosqlite
 aiokafka
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-httpx
+opentelemetry-exporter-otlp-proto-http
