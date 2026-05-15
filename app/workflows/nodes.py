@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from app.workflows.state import (
@@ -57,13 +58,13 @@ async def reconciliation_agent(
         for tool in tools
     }
 
-    exchange_balance_response = await tool_map[
-        "get_exchange_balance"
-    ].ainvoke({})
-
-    blockchain_balance_response = await tool_map[
-        "get_blockchain_balance"
-    ].ainvoke({})
+    (
+        exchange_balance_response,
+        blockchain_balance_response,
+    ) = await asyncio.gather(
+        tool_map["get_exchange_balance"].ainvoke({}),
+        tool_map["get_blockchain_balance"].ainvoke({}),
+    )
 
     exchange_balance = extract_balance(
         exchange_balance_response

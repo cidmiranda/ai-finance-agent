@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from app.storage.workflow_store import (
     workflow_store,
 )
@@ -7,9 +5,7 @@ from app.storage.workflow_store import (
 
 def create_workflow(state: dict):
 
-    workflow_id = str(uuid4())
-
-    state["workflow_id"] = workflow_id
+    workflow_id = state["workflow_id"]
 
     workflow_store[workflow_id] = state
 
