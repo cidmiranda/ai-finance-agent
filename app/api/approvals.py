@@ -1,14 +1,12 @@
 from fastapi import APIRouter, HTTPException
 
+from langgraph.types import Command
+
 from app.workflows.graph import graph
 
 from app.services.approval_service import (
     get_workflow,
     list_pending_workflows,
-)
-
-from app.workflows.nodes import (
-    finalize_approval_node,
 )
 
 router = APIRouter(
@@ -52,11 +50,11 @@ async def approve_workflow(
             detail="Workflow not found",
         )
 
-    result = await finalize_approval_node(
-        {
-            **workflow,
-            "approved": True,
-        }
+    config = {"configurable": {"thread_id": workflow_id}}
+
+    result = await graph.ainvoke(
+        Command(resume={"approved": True}),
+        config=config,
     )
 
     return {
@@ -79,11 +77,11 @@ async def reject_workflow(
             detail="Workflow not found",
         )
 
-    result = await finalize_approval_node(
-        {
-            **workflow,
-            "approved": False,
-        }
+    config = {"configurable": {"thread_id": workflow_id}}
+
+    result = await graph.ainvoke(
+        Command(resume={"approved": False}),
+        config=config,
     )
 
     return {

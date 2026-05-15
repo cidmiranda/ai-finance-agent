@@ -10,8 +10,8 @@ from app.workflows.state import (
 from app.workflows.nodes import (
     reconciliation_agent,
     human_approval_node,
+    wait_for_approval_node,
     auto_approve_node,
-    finalize_approval_node,
 )
 
 from app.workflows.routes import (
@@ -51,8 +51,8 @@ workflow.add_node(
 )
 
 workflow.add_node(
-    "finalize_approval",
-    finalize_approval_node,
+    "wait_for_approval",
+    wait_for_approval_node,
 )
 
 workflow.add_node(
@@ -75,11 +75,11 @@ workflow.add_conditional_edges(
 
 workflow.add_edge(
     "human_approval",
-    END,
+    "wait_for_approval",
 )
 
 workflow.add_edge(
-    "finalize_approval",
+    "wait_for_approval",
     END,
 )
 

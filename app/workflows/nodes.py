@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+from langgraph.types import interrupt
+
 from app.workflows.state import (
     WorkflowState,
 )
@@ -135,54 +137,29 @@ async def human_approval_node(
 
     update_workflow(
         state.get("workflow_id"),
-        {
-            **state,
-            "status": "WAITING_APPROVAL",
-            "approved": False,
-        },
+        {**state, "status": "WAITING_APPROVAL"},
     )
 
-    return {
-        **state,
-        "status": "WAITING_APPROVAL",
-        "approved": False,
-    }
+    return {**state, "status": "WAITING_APPROVAL"}
 
-async def finalize_approval_node(
+
+async def wait_for_approval_node(
     state: WorkflowState,
 ):
 
-    print("FINALIZE APPROVAL STATE:", state)
+    print("WAIT FOR APPROVAL STATE:", state)
 
-    if state.get("approved"):
+    decision = interrupt("Waiting for human approval")
 
-        update_workflow(
-            state.get("workflow_id"),
-            {
-                "approved": True,
-                "status": "APPROVED",
-            },
-        )
-
-        return {
-            **state,
-            "workflow_id": state.get("workflow_id"),
-            "status": "APPROVED",
-        }
+    approved = decision.get("approved", False)
+    status = "APPROVED" if approved else "REJECTED"
 
     update_workflow(
         state.get("workflow_id"),
-        {
-            "approved": False,
-            "status": "REJECTED",
-        },
+        {"approved": approved, "status": status},
     )
 
-    return {
-        **state,
-        "workflow_id": state.get("workflow_id"),
-        "status": "REJECTED",
-    }
+    return {**state, "approved": approved, "status": status}
 
 
 async def auto_approve_node(
