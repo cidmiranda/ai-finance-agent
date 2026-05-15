@@ -11,6 +11,8 @@ from app.api.approvals import (
     router as approvals_router,
 )
 
+from app.audit.router import router as audit_router
+
 from app.services.approval_service import (
     create_workflow,
 )
@@ -73,9 +75,8 @@ app = FastAPI(lifespan=lifespan)
 
 setup_telemetry(app)
 
-app.include_router(
-    approvals_router,
-)
+app.include_router(approvals_router)
+app.include_router(audit_router)
 
 app.mount("/mcp-server", mcp_asgi)
 

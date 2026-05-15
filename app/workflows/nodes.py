@@ -29,6 +29,9 @@ import app.agents.compliance as compliance_agent
 import app.agents.operations as operations_agent
 import app.agents.supervisor as supervisor_agent
 
+from app.audit.logger import log_event
+from app.audit import events as audit_events
+
 tracer = get_tracer()
 from app.kafka.topics import (
     RECONCILIATION_COMPLETED,
@@ -70,6 +73,16 @@ async def reconciliation_agent(
 
     with tracer.start_as_current_span("reconciliation_agent") as span:
         span.set_attribute("workflow.id", state.get("workflow_id", ""))
+
+        log_event(
+            audit_events.RECONCILIATION_STARTED,
+            workflow_id=state.get("workflow_id", ""),
+            actor="system",
+            data={
+                "exchange_balance": state.get("exchange_balance"),
+                "blockchain_balance": state.get("blockchain_balance"),
+            },
+        )
 
         tools = await get_mcp_tools()
 
@@ -128,6 +141,19 @@ async def reconciliation_agent(
             "analysis": analysis.content,
         }
 
+        log_event(
+            audit_events.RECONCILIATION_COMPLETED,
+            workflow_id=next_state["workflow_id"] or "",
+            actor="system",
+            data={
+                "exchange_balance": exchange_balance,
+                "blockchain_balance": blockchain_balance,
+                "difference": reconciliation["difference"],
+                "risk_level": reconciliation["risk_level"],
+                "requires_approval": reconciliation["requires_approval"],
+            },
+        )
+
         await kafka_producer.publish(RECONCILIATION_COMPLETED, {
             "workflow_id": next_state["workflow_id"],
             "exchange_balance": exchange_balance,
@@ -160,6 +186,16 @@ async def human_approval_node(
             {**state, "status": "WAITING_APPROVAL"},
         )
 
+        log_event(
+            audit_events.APPROVAL_REQUESTED,
+            workflow_id=state.get("workflow_id", ""),
+            actor="system",
+            data={
+                "difference": state.get("difference"),
+                "risk_level": state.get("risk_level"),
+            },
+        )
+
         await kafka_producer.publish(RECONCILIATION_APPROVAL_REQUESTED, {
             "workflow_id": state.get("workflow_id"),
             "difference": state.get("difference"),
@@ -188,6 +224,13 @@ async def wait_for_approval_node(
             {"approved": approved, "status": status},
         )
 
+        log_event(
+            audit_events.APPROVAL_RECEIVED,
+            workflow_id=state.get("workflow_id", ""),
+            actor="human",
+            data={"approved": approved, "status": status},
+        )
+
         topic = RECONCILIATION_APPROVED if approved else RECONCILIATION_REJECTED
         await kafka_producer.publish(topic, {
             "workflow_id": state.get("workflow_id"),
@@ -212,6 +255,16 @@ async def auto_approve_node(
             {"approved": True, "status": "AUTO_APPROVED"},
         )
 
+        log_event(
+            audit_events.AUTO_APPROVED,
+            workflow_id=state.get("workflow_id", ""),
+            actor="system",
+            data={
+                "difference": state.get("difference"),
+                "risk_level": state.get("risk_level"),
+            },
+        )
+
         await kafka_producer.publish(RECONCILIATION_AUTO_APPROVED, {
             "workflow_id": state.get("workflow_id"),
             "approved": True,
@@ -229,6 +282,17 @@ async def auto_approve_node(
 async def multi_agent_reconciliation_node(state: WorkflowState):
     with tracer.start_as_current_span("multi_agent_reconciliation") as span:
         span.set_attribute("workflow.id", state.get("workflow_id", ""))
+
+        log_event(
+            audit_events.RECONCILIATION_STARTED,
+            workflow_id=state.get("workflow_id", ""),
+            actor="system",
+            data={
+                "exchange_balance": state.get("exchange_balance"),
+                "blockchain_balance": state.get("blockchain_balance"),
+                "mode": "multi_agent",
+            },
+        )
 
         tools = await get_mcp_tools()
         tool_map = {tool.name: tool for tool in tools}
@@ -271,6 +335,20 @@ async def multi_agent_reconciliation_node(state: WorkflowState):
 
         executive_summary = await supervisor_agent.run(
             agent_data, risk_analysis, compliance_analysis, recommendations
+        )
+
+        log_event(
+            audit_events.MULTI_AGENT_ANALYSIS_COMPLETED,
+            workflow_id=state.get("workflow_id", ""),
+            actor="system",
+            data={
+                "exchange_balance": exchange_balance,
+                "blockchain_balance": blockchain_balance,
+                "difference": reconciliation["difference"],
+                "risk_level": reconciliation["risk_level"],
+                "requires_approval": reconciliation["requires_approval"],
+                "executive_summary": executive_summary,
+            },
         )
 
         await kafka_producer.publish(RECONCILIATION_COMPLETED, {
