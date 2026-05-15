@@ -24,6 +24,11 @@ from app.kafka import producer as kafka_producer
 from app.kafka import consumer as kafka_consumer
 from app.kafka.topics import RECONCILIATION_REQUESTED
 from app.telemetry.tracer import setup_telemetry
+from temporalio.client import Client
+
+from app.temporal.worker import run_worker, TASK_QUEUE
+from app.temporal.workflows import ReconciliationSaga
+from app.config.settings import TEMPORAL_HOST
 
 mcp_asgi = mcp.streamable_http_app()
 
@@ -54,10 +59,12 @@ async def lifespan(_app: FastAPI):
         consumer_task = asyncio.create_task(
             kafka_consumer.start(handle_reconciliation_from_kafka)
         )
+        worker_task = asyncio.create_task(run_worker())
         try:
             yield
         finally:
             consumer_task.cancel()
+            worker_task.cancel()
             await kafka_producer.stop()
 
 
@@ -139,3 +146,36 @@ async def reconcile_via_kafka(
     )
 
     return {"status": "published", "topic": RECONCILIATION_REQUESTED}
+
+
+@app.post("/reconcile/temporal")
+async def reconcile_via_temporal():
+    workflow_id = str(uuid4())
+    client = await Client.connect(TEMPORAL_HOST)
+
+    await client.start_workflow(
+        ReconciliationSaga.run,
+        workflow_id,
+        id=workflow_id,
+        task_queue=TASK_QUEUE,
+    )
+
+    return {"workflow_id": workflow_id, "status": "started"}
+
+
+@app.post("/reconcile/temporal/{workflow_id}/approve")
+async def approve_temporal_workflow(workflow_id: str):
+    client = await Client.connect(TEMPORAL_HOST)
+    handle = client.get_workflow_handle(workflow_id)
+    await handle.signal(ReconciliationSaga.receive_decision, True)
+
+    return {"workflow_id": workflow_id, "status": "approved"}
+
+
+@app.post("/reconcile/temporal/{workflow_id}/reject")
+async def reject_temporal_workflow(workflow_id: str):
+    client = await Client.connect(TEMPORAL_HOST)
+    handle = client.get_workflow_handle(workflow_id)
+    await handle.signal(ReconciliationSaga.receive_decision, False)
+
+    return {"workflow_id": workflow_id, "status": "rejected"}
