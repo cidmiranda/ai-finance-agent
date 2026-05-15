@@ -24,6 +24,11 @@ from app.mcp_client.client import (
 from app.telemetry.tracer import get_tracer
 from app.kafka import producer as kafka_producer
 
+import app.agents.risk_analyst as risk_analyst_agent
+import app.agents.compliance as compliance_agent
+import app.agents.operations as operations_agent
+import app.agents.supervisor as supervisor_agent
+
 tracer = get_tracer()
 from app.kafka.topics import (
     RECONCILIATION_COMPLETED,
@@ -218,4 +223,74 @@ async def auto_approve_node(
             "workflow_id": state.get("workflow_id"),
             "approved": True,
             "status": "AUTO_APPROVED",
+        }
+
+
+async def multi_agent_reconciliation_node(state: WorkflowState):
+    with tracer.start_as_current_span("multi_agent_reconciliation") as span:
+        span.set_attribute("workflow.id", state.get("workflow_id", ""))
+
+        tools = await get_mcp_tools()
+        tool_map = {tool.name: tool for tool in tools}
+
+        (
+            exchange_balance_response,
+            blockchain_balance_response,
+        ) = await asyncio.gather(
+            tool_map["get_exchange_balance"].ainvoke({}),
+            tool_map["get_blockchain_balance"].ainvoke({}),
+        )
+
+        exchange_balance = extract_balance(exchange_balance_response)
+        blockchain_balance = extract_balance(blockchain_balance_response)
+
+        reconciliation_response = await tool_map["reconcile_balances"].ainvoke({
+            "exchange_balance": exchange_balance,
+            "blockchain_balance": blockchain_balance,
+        })
+        reconciliation = extract_mcp_result(reconciliation_response)
+
+        span.set_attribute("reconciliation.exchange_balance", exchange_balance)
+        span.set_attribute("reconciliation.blockchain_balance", blockchain_balance)
+        span.set_attribute("reconciliation.difference", reconciliation["difference"])
+        span.set_attribute("reconciliation.risk_level", reconciliation["risk_level"])
+        span.set_attribute("reconciliation.requires_approval", reconciliation["requires_approval"])
+
+        agent_data = {
+            "exchange_balance": exchange_balance,
+            "blockchain_balance": blockchain_balance,
+            "difference": reconciliation["difference"],
+            "risk_level": reconciliation["risk_level"],
+        }
+
+        risk_analysis, compliance_analysis, recommendations = await asyncio.gather(
+            risk_analyst_agent.run(agent_data),
+            compliance_agent.run(agent_data),
+            operations_agent.run(agent_data),
+        )
+
+        executive_summary = await supervisor_agent.run(
+            agent_data, risk_analysis, compliance_analysis, recommendations
+        )
+
+        await kafka_producer.publish(RECONCILIATION_COMPLETED, {
+            "workflow_id": state.get("workflow_id"),
+            "exchange_balance": exchange_balance,
+            "blockchain_balance": blockchain_balance,
+            "difference": reconciliation["difference"],
+            "risk_level": reconciliation["risk_level"],
+            "requires_approval": reconciliation["requires_approval"],
+        })
+
+        return {
+            **state,
+            "exchange_balance": exchange_balance,
+            "blockchain_balance": blockchain_balance,
+            "difference": reconciliation["difference"],
+            "risk_level": reconciliation["risk_level"],
+            "requires_approval": reconciliation["requires_approval"],
+            "risk_analysis": risk_analysis,
+            "compliance_analysis": compliance_analysis,
+            "recommendations": recommendations,
+            "executive_summary": executive_summary,
         }

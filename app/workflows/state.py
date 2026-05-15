@@ -8,6 +8,8 @@ class WorkflowState(
 
     workflow_id: str
 
+    graph_type: str
+
     exchange_balance: float
 
     blockchain_balance: float
@@ -19,6 +21,14 @@ class WorkflowState(
     requires_approval: bool
 
     analysis: str
+
+    risk_analysis: str
+
+    compliance_analysis: str
+
+    recommendations: str
+
+    executive_summary: str
 
     approved: bool
 

@@ -3,11 +3,18 @@ from fastapi import APIRouter, HTTPException
 from langgraph.types import Command
 
 from app.workflows.graph import graph
+from app.workflows.multi_agent_graph import multi_agent_graph
 
 from app.services.approval_service import (
     get_workflow,
     list_pending_workflows,
 )
+
+
+def _resolve_graph(workflow: dict):
+    if workflow.get("graph_type") == "multi_agent":
+        return multi_agent_graph
+    return graph
 
 router = APIRouter(
     prefix="/approvals",
@@ -52,7 +59,7 @@ async def approve_workflow(
 
     config = {"configurable": {"thread_id": workflow_id}}
 
-    result = await graph.ainvoke(
+    result = await _resolve_graph(workflow).ainvoke(
         Command(resume={"approved": True}),
         config=config,
     )
@@ -79,7 +86,7 @@ async def reject_workflow(
 
     config = {"configurable": {"thread_id": workflow_id}}
 
-    result = await graph.ainvoke(
+    result = await _resolve_graph(workflow).ainvoke(
         Command(resume={"approved": False}),
         config=config,
     )

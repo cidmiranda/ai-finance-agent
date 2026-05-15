@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 
 from app.workflows.graph import graph
+from app.workflows.multi_agent_graph import multi_agent_graph
 
 from app.api.approvals import (
     router as approvals_router,
@@ -179,3 +180,42 @@ async def reject_temporal_workflow(workflow_id: str):
     await handle.signal(ReconciliationSaga.receive_decision, False)
 
     return {"workflow_id": workflow_id, "status": "rejected"}
+
+
+@app.post("/reconcile/multi-agent")
+async def reconcile_multi_agent(request: ReconciliationRequest):
+    workflow_id = str(uuid4())
+
+    initial_state = {
+        "workflow_id": workflow_id,
+        "status": "RUNNING",
+        "graph_type": "multi_agent",
+        "exchange_balance": request.exchange_balance,
+        "blockchain_balance": request.blockchain_balance,
+        "approved": False,
+        "requires_approval": False,
+    }
+
+    create_workflow(initial_state)
+
+    config = {"configurable": {"thread_id": workflow_id}}
+
+    try:
+        result = await multi_agent_graph.ainvoke(initial_state, config=config)
+
+        return {
+            "workflow_id": workflow_id,
+            "risk_analysis": result.get("risk_analysis"),
+            "compliance_analysis": result.get("compliance_analysis"),
+            "recommendations": result.get("recommendations"),
+            "executive_summary": result.get("executive_summary"),
+            "status": result.get("status"),
+        }
+
+    except Exception as e:
+        print("MULTI-AGENT ERROR:", repr(e))
+        return {
+            "workflow_id": workflow_id,
+            "status": "ERROR",
+            "error": str(e),
+        }
