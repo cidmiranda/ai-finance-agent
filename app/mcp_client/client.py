@@ -1,15 +1,10 @@
 from langchain_mcp_adapters.client import MultiServerMCPClient
-import sys
 
 client = MultiServerMCPClient(
     {
         "finance": {
-            "command": sys.executable,
-            "args": [
-                "-m",
-                "app.mcp_server.server"
-            ],
-            "transport": "stdio",
+            "url": "http://localhost:8000/mcp-server/mcp",
+            "transport": "streamable_http",
         }
     }
 )

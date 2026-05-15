@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -16,11 +17,24 @@ from app.schemas.reconciliation import (
     ReconciliationRequest,
 )
 
-app = FastAPI()
+from app.mcp_server.server import mcp
+
+mcp_asgi = mcp.streamable_http_app()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with mcp.session_manager.run():
+        yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(
     approvals_router,
 )
+
+app.mount("/mcp-server", mcp_asgi)
 
 
 @app.post("/reconcile")
