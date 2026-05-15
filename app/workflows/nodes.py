@@ -21,6 +21,15 @@ from app.mcp_client.client import (
     get_mcp_tools,
 )
 
+from app.kafka import producer as kafka_producer
+from app.kafka.topics import (
+    RECONCILIATION_COMPLETED,
+    RECONCILIATION_APPROVAL_REQUESTED,
+    RECONCILIATION_APPROVED,
+    RECONCILIATION_REJECTED,
+    RECONCILIATION_AUTO_APPROVED,
+)
+
 
 def extract_mcp_result(result):
 
@@ -105,22 +114,27 @@ async def reconciliation_agent(
 
     analysis = await llm.ainvoke(prompt)
 
-    return {
+    next_state = {
         **state,
         "workflow_id": state.get("workflow_id"),
         "exchange_balance": exchange_balance,
         "blockchain_balance": blockchain_balance,
-        "difference": reconciliation[
-            "difference"
-        ],
-        "risk_level": reconciliation[
-            "risk_level"
-        ],
-        "requires_approval": reconciliation[
-            "requires_approval"
-        ],
+        "difference": reconciliation["difference"],
+        "risk_level": reconciliation["risk_level"],
+        "requires_approval": reconciliation["requires_approval"],
         "analysis": analysis.content,
     }
+
+    await kafka_producer.publish(RECONCILIATION_COMPLETED, {
+        "workflow_id": next_state["workflow_id"],
+        "exchange_balance": exchange_balance,
+        "blockchain_balance": blockchain_balance,
+        "difference": reconciliation["difference"],
+        "risk_level": reconciliation["risk_level"],
+        "requires_approval": reconciliation["requires_approval"],
+    })
+
+    return next_state
 
 
 async def human_approval_node(
@@ -139,6 +153,12 @@ async def human_approval_node(
         state.get("workflow_id"),
         {**state, "status": "WAITING_APPROVAL"},
     )
+
+    await kafka_producer.publish(RECONCILIATION_APPROVAL_REQUESTED, {
+        "workflow_id": state.get("workflow_id"),
+        "difference": state.get("difference"),
+        "risk_level": state.get("risk_level"),
+    })
 
     return {**state, "status": "WAITING_APPROVAL"}
 
@@ -159,6 +179,13 @@ async def wait_for_approval_node(
         {"approved": approved, "status": status},
     )
 
+    topic = RECONCILIATION_APPROVED if approved else RECONCILIATION_REJECTED
+    await kafka_producer.publish(topic, {
+        "workflow_id": state.get("workflow_id"),
+        "approved": approved,
+        "status": status,
+    })
+
     return {**state, "approved": approved, "status": status}
 
 
@@ -175,6 +202,12 @@ async def auto_approve_node(
             "status": "AUTO_APPROVED",
         },
     )
+
+    await kafka_producer.publish(RECONCILIATION_AUTO_APPROVED, {
+        "workflow_id": state.get("workflow_id"),
+        "approved": True,
+        "status": "AUTO_APPROVED",
+    })
 
     return {
         **state,

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -19,13 +20,44 @@ from app.schemas.reconciliation import (
 
 from app.mcp_server.server import mcp
 
+from app.kafka import producer as kafka_producer
+from app.kafka import consumer as kafka_consumer
+from app.kafka.topics import RECONCILIATION_REQUESTED
+
 mcp_asgi = mcp.streamable_http_app()
 
 
+async def handle_reconciliation_from_kafka(payload: dict):
+    workflow_id = str(uuid4())
+
+    initial_state = {
+        "workflow_id": workflow_id,
+        "status": "RUNNING",
+        "exchange_balance": payload.get("exchange_balance", 0),
+        "blockchain_balance": payload.get("blockchain_balance", 0),
+        "approved": False,
+        "requires_approval": False,
+    }
+
+    create_workflow(initial_state)
+
+    config = {"configurable": {"thread_id": workflow_id}}
+
+    await graph.ainvoke(initial_state, config=config)
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     async with mcp.session_manager.run():
-        yield
+        await kafka_producer.start()
+        consumer_task = asyncio.create_task(
+            kafka_consumer.start(handle_reconciliation_from_kafka)
+        )
+        try:
+            yield
+        finally:
+            consumer_task.cancel()
+            await kafka_producer.stop()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -88,3 +120,19 @@ async def reconcile(
             "status": "ERROR",
             "error": str(e),
         }
+
+
+@app.post("/reconcile/kafka")
+async def reconcile_via_kafka(
+    request: ReconciliationRequest,
+):
+
+    await kafka_producer.publish(
+        RECONCILIATION_REQUESTED,
+        {
+            "exchange_balance": request.exchange_balance,
+            "blockchain_balance": request.blockchain_balance,
+        },
+    )
+
+    return {"status": "published", "topic": RECONCILIATION_REQUESTED}

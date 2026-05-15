@@ -1,0 +1,6 @@
+RECONCILIATION_REQUESTED = "reconciliation.requested"
+RECONCILIATION_COMPLETED = "reconciliation.completed"
+RECONCILIATION_APPROVAL_REQUESTED = "reconciliation.approval_requested"
+RECONCILIATION_APPROVED = "reconciliation.approved"
+RECONCILIATION_REJECTED = "reconciliation.rejected"
+RECONCILIATION_AUTO_APPROVED = "reconciliation.auto_approved"
